@@ -92,7 +92,7 @@ my $buffer_size   = 8192;
 my $prefix        = 'collectd';
 my $graphite_host = 'localhost';
 my $graphite_port = 2003;
-
+my $override_collectd_hostname;
 
 sub graphite_config {
     my ($ci) = @_;
@@ -109,6 +109,8 @@ sub graphite_config {
             $graphite_host = $val;
         } elsif ( $key =~ /port/i ) {
             $graphite_port = $val;
+        } elsif ( $key =~ /override_collectd_hostname/i ) {
+            $override_collectd_hostname = $val;
         }
     }
 
@@ -117,20 +119,26 @@ sub graphite_config {
 
 sub graphite_write {
     my ($type, $ds, $vl) = @_;
+	
+	my $host;
+	if ( defined($override_collectd_hostname) ) {
+		$host = $override_collectd_hostname
+	} else {
+      	$host = $vl->{'host'};	
+	}
 
-    my $host = $vl->{'host'};
     $host =~ s/\./_/g;
 
     my $plugin_str = $vl->{'plugin'};
     my $type_str   = $vl->{'type'};
-    
+
     if ( defined $vl->{'plugin_instance'} ) {
         $plugin_str .=  "-" . $vl->{'plugin_instance'};
     }
     if ( defined $vl->{'type_instance'} ) {
         $type_str .= "-" . $vl->{'type_instance'};
     }
-    
+
     for (my $i = 0; $i < scalar (@$ds); ++$i) {
         my $graphite_path = sprintf "%s.%s.%s.%s.%s",
             $prefix,
@@ -138,10 +146,10 @@ sub graphite_write {
             $plugin_str,
             $type_str,
             $ds->[$i]->{'name'};
-            
+
         # convert any spaces that may have snuck in
         $graphite_path =~ s/\s+/_/g;
-      
+
         $buff .= sprintf  "%s %s %d\n",
             $graphite_path,
             $vl->{'values'}->[$i],
@@ -150,7 +158,7 @@ sub graphite_write {
 
     # This is a best effort.  If sending to graphite fails, we
     # do not try again, this chunk of data will be lost.
-    
+
     if ( length($buff) >= $buffer_size ) {
         send_to_graphite();
     }
